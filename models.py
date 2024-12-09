@@ -3,8 +3,6 @@ from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.orm import sessionmaker
  
 # Определение базы данных
-DATABASE_URL = "postgresql+psycopg://postgres:admin@localhost/lab9"
-
 Base = declarative_base()
 
 # Модель для Users
@@ -29,10 +27,4 @@ class Post(Base):
 
     owner = relationship('User', back_populates='posts')  # Обратная связь с таблицей Users
 
-# Создание базы данных и таблиц
-engine = create_engine(DATABASE_URL)
-Base.metadata.create_all(bind=engine)
-
-# Создание сессии для работы с базой данных
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
+ 

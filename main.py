@@ -1,12 +1,21 @@
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
-from models import SessionLocal, create_user, create_post, get_users, get_posts, update_user_email, delete_post, delete_user
+from create_tables import SessionLocal
+from models import User, Post
 from pydantic import BaseModel
+from sqlalchemy.exc import SQLAlchemyError
 
-# Инициализация FastAPI
 app = FastAPI()
 
-# Модели Pydantic для входных данных
+# Dependency для получения сессии базы данных
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+# Pydantic модели для валидации данных
 class UserCreate(BaseModel):
     username: str
     email: str
@@ -15,47 +24,98 @@ class UserCreate(BaseModel):
 class PostCreate(BaseModel):
     title: str
     content: str
-    user_id: int
 
-# Зависимость для получения сессии
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# CRUD операции
 
-# Роут для добавления пользователя
+# Создание пользователя
 @app.post("/users/")
-def create_user_view(user: UserCreate, db: Session = Depends(get_db)):
-    return create_user(db, user.username, user.email, user.password)
+def create_user(user: UserCreate, db: Session = Depends(get_db)):
+    db_user = User(username=user.username, email=user.email, password=user.password)
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
 
-# Роут для добавления поста
-@app.post("/posts/")
-def create_post_view(post: PostCreate, db: Session = Depends(get_db)):
-    return create_post(db, post.title, post.content, post.user_id)
-
-# Роут для получения всех пользователей
+# Получение всех пользователей
 @app.get("/users/")
-def get_users_view(db: Session = Depends(get_db)):
-    return get_users(db)
+def get_users(db: Session = Depends(get_db)):
+    return db.query(User).all()
 
-# Роут для получения всех постов
-@app.get("/posts/")
-def get_posts_view(db: Session = Depends(get_db)):
-    return get_posts(db)
+# Получение конкретного пользователя по ID
+@app.get("/users/{user_id}")
+def get_user(user_id: int, db: Session = Depends(get_db)):
+    db_user = db.query(User).filter(User.id == user_id).first()
+    if db_user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return db_user
 
-# Роут для обновления email пользователя
+# Обновление пользователя
 @app.put("/users/{user_id}")
-def update_email(user_id: int, email: str, db: Session = Depends(get_db)):
-    return update_user_email(db, user_id, email)
+def update_user(user_id: int, user: UserCreate, db: Session = Depends(get_db)):
+    db_user = db.query(User).filter(User.id == user_id).first()
+    if db_user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    db_user.username = user.username
+    db_user.email = user.email
+    db_user.password = user.password
+    db.commit()
+    db.refresh(db_user)
+    return db_user
 
-# Роут для удаления поста
-@app.delete("/posts/{post_id}")
-def delete_post_view(post_id: int, db: Session = Depends(get_db)):
-    return delete_post(db, post_id)
-
-# Роут для удаления пользователя
+# Удаление пользователя
 @app.delete("/users/{user_id}")
-def delete_user_view(user_id: int, db: Session = Depends(get_db)):
-    return delete_user(db, user_id)
+def delete_user(user_id: int, db: Session = Depends(get_db)):
+    db_user = db.query(User).filter(User.id == user_id).first()
+    if db_user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    db.delete(db_user)
+    db.commit()
+    return {"message": "User deleted successfully"}
+
+# Создание поста
+@app.post("/posts/")
+def create_post(user_ids:int,post: PostCreate, db: Session = Depends(get_db)):
+    db_post = Post(title=post.title, content=post.content, user_id=user_ids)  # Можно добавить реальную логику для привязки к пользователю
+    db.add(db_post)
+    db.commit()
+    db.refresh(db_post)
+    return db_post
+
+# Получение всех постов
+@app.get("/posts/")
+def get_posts(db: Session = Depends(get_db)):
+    return db.query(Post).all()
+
+# Получение конкретного поста по ID
+@app.get("/posts/{post_id}")
+def get_post(post_id: int, db: Session = Depends(get_db)):
+    db_post = db.query(Post).filter(Post.id == post_id).first()
+    if db_post is None:
+        raise HTTPException(status_code=404, detail="Post not found")
+    return db_post
+
+# Обновление поста
+@app.put("/posts/{post_id}")
+def update_post(post_id: int, post: PostCreate, db: Session = Depends(get_db)):
+    db_post = db.query(Post).filter(Post.id == post_id).first()
+    if db_post is None:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    db_post.title = post.title
+    db_post.content = post.content
+    db.commit()
+    db.refresh(db_post)
+    return db_post
+
+# Удаление поста
+@app.delete("/posts/{post_id}")
+def delete_post(post_id: int, db: Session = Depends(get_db)):
+    db_post = db.query(Post).filter(Post.id == post_id).first()
+    if db_post is None:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    db.delete(db_post)
+    db.commit()
+    return {"message": "Post deleted successfully"}
